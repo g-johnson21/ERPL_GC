@@ -312,8 +312,22 @@ function buildPalette() {
     const sPal = document.getElementById('sensor-palette');
     sensors.forEach(s => {
         sPal.innerHTML += `
-            <div class="palette-item" draggable="true" data-type="sensor" data-channel="${s.ch}" data-name="${s.name}">
+            <div class="palette-item" draggable="true" data-type="sensor" data-channel="${s.ch}" data-name="${s.name}" data-sensor-type="pt">
                 <div class="palette-icon sensor"><i class="fas fa-gauge"></i></div> ${s.name}
+            </div>`;
+    });
+    const lcPal = document.getElementById('lc-palette');
+    loadCells.forEach(s => {
+        lcPal.innerHTML += `
+            <div class="palette-item" draggable="true" data-type="sensor" data-channel="${s.ch}" data-name="${s.name}" data-sensor-type="lc">
+                <div class="palette-icon lc"><i class="fas fa-weight-hanging"></i></div> ${s.name}
+            </div>`;
+    });
+    const tcPal = document.getElementById('tc-palette');
+    thermocouples.forEach(s => {
+        tcPal.innerHTML += `
+            <div class="palette-item" draggable="true" data-type="sensor" data-channel="${s.ch}" data-name="${s.name}" data-sensor-type="tc">
+                <div class="palette-icon tc"><i class="fas fa-temperature-high"></i></div> ${s.name}
             </div>`;
     });
 }
@@ -329,6 +343,7 @@ function setupDragFromPalette() {
                 shape: item.dataset.shape || null,
                 channel: item.dataset.channel ? parseInt(item.dataset.channel) : null,
                 name: item.dataset.name || null,
+                sensorType: item.dataset.sensorType || null,
             }));
         });
     });
@@ -377,12 +392,18 @@ function addNode(info, x, y) {
             break;
         case 'sensor':
             node.channel = info.channel;
+            node.sensorType = info.sensorType || 'pt';
             node.label = info.name || `PT${info.channel}`;
-            node.fill = '#ebf8ff';
-            node.stroke = '#3182ce';
             node.width = 60;
             node.height = 60;
             node.shape = 'circle';
+            if (node.sensorType === 'lc') {
+                node.fill = '#fefcbf'; node.stroke = '#d69e2e';
+            } else if (node.sensorType === 'tc') {
+                node.fill = '#fed7e2'; node.stroke = '#d53f8c';
+            } else {
+                node.fill = '#ebf8ff'; node.stroke = '#3182ce';
+            }
             break;
         case 'shape':
             node.shape = info.shape;
@@ -506,8 +527,11 @@ function render() {
 
         const w = n.width, h = n.height;
 
-        // Draw body
-        if (n.type === 'sensor' || (n.shape === 'circle')) {
+        // Draw body (skip if hideShape is set)
+        if (n.hideShape) {
+            // Invisible hit area so node can still be clicked/dragged
+            g.appendChild(svgEl('rect', { x: 0, y: 0, width: w, height: h, fill: 'transparent', stroke: 'none', class: 'node-body' }));
+        } else if (n.type === 'sensor' || (n.shape === 'circle')) {
             const r = Math.min(w, h) / 2;
             const el = svgEl('circle', { cx: w/2, cy: h/2, r, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' });
             g.appendChild(el);
@@ -541,7 +565,7 @@ function render() {
                 'text-anchor': 'middle', 'dominant-baseline': 'central',
                 'font-size': n.fontSize || 12, 'font-weight': '600',
                 'font-family': 'Arial, sans-serif',
-                fill: n.type === 'dc' ? '#e53e3e' : n.type === 'sensor' ? '#3182ce' : '#2d3748',
+                fill: n.type === 'dc' ? '#e53e3e' : n.type === 'sensor' ? (n.sensorType === 'lc' ? '#d69e2e' : n.sensorType === 'tc' ? '#d53f8c' : '#3182ce') : '#2d3748',
                 'pointer-events': 'none',
             });
             txt.textContent = n.label;
@@ -839,7 +863,8 @@ function renderProps() {
     const n = nodes.find(nd => nd.id === selectedId);
     if (!n) { container.innerHTML = '<div class="no-selection">Select an object</div>'; return; }
 
-    let typeLabel = n.type === 'dc' ? `DC Channel ${n.channel}` : n.type === 'sensor' ? `Sensor (${n.label})` : n.type === 'label' ? 'Label' : `Shape (${n.shape})`;
+    const sensorTypeNames = { pt: 'Pressure Transducer', lc: 'Load Cell', tc: 'Thermocouple' };
+    let typeLabel = n.type === 'dc' ? `DC Channel ${n.channel}` : n.type === 'sensor' ? `${sensorTypeNames[n.sensorType] || 'Sensor'} (${n.label})` : n.type === 'label' ? 'Label' : `Shape (${n.shape})`;
 
     let html = `
         <div class="prop-group">
@@ -870,6 +895,16 @@ function renderProps() {
             <input type="color" class="prop-color" value="${n.stroke === 'none' ? '#ffffff' : n.stroke}" onchange="updateNode(${n.id},'stroke',this.value)">
             <div class="prop-label" style="margin-top:6px;">Stroke Width</div>
             <input type="number" class="prop-input" min="0" max="10" value="${n.strokeWidth}" onchange="updateNode(${n.id},'strokeWidth',parseFloat(this.value))">
+        </div>`;
+    }
+
+    if (n.type === 'dc' || n.type === 'sensor') {
+        html += `
+        <div class="prop-group">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#4a5568;cursor:pointer;">
+                <input type="checkbox" ${n.hideShape ? 'checked' : ''} onchange="updateNode(${n.id},'hideShape',this.checked)">
+                Hide Shape (text only)
+            </label>
         </div>`;
     }
 

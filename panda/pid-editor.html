@@ -376,6 +376,7 @@ function addNode(info, x, y) {
         fill: '#ffffff',
         stroke: '#718096',
         strokeWidth: 2,
+        fontColor: '#2d3748',
         width: 100,
         height: 50,
         fontSize: 12,
@@ -387,8 +388,9 @@ function addNode(info, x, y) {
             node.label = info.name || `DC${info.channel}`;
             node.fill = '#f7fafc';
             node.stroke = '#e53e3e';
+            node.fontColor = '#e53e3e';
             node.width = 80;
-            node.height = 36;
+            node.height = 44;
             break;
         case 'sensor':
             node.channel = info.channel;
@@ -398,11 +400,11 @@ function addNode(info, x, y) {
             node.height = 60;
             node.shape = 'circle';
             if (node.sensorType === 'lc') {
-                node.fill = '#fefcbf'; node.stroke = '#d69e2e';
+                node.fill = '#fefcbf'; node.stroke = '#d69e2e'; node.fontColor = '#d69e2e';
             } else if (node.sensorType === 'tc') {
-                node.fill = '#fed7e2'; node.stroke = '#d53f8c';
+                node.fill = '#fed7e2'; node.stroke = '#d53f8c'; node.fontColor = '#d53f8c';
             } else {
-                node.fill = '#ebf8ff'; node.stroke = '#3182ce';
+                node.fill = '#ebf8ff'; node.stroke = '#3182ce'; node.fontColor = '#3182ce';
             }
             break;
         case 'shape':
@@ -565,7 +567,7 @@ function render() {
                 'text-anchor': 'middle', 'dominant-baseline': 'central',
                 'font-size': n.fontSize || 12, 'font-weight': '600',
                 'font-family': 'Arial, sans-serif',
-                fill: n.type === 'dc' ? '#e53e3e' : n.type === 'sensor' ? (n.sensorType === 'lc' ? '#d69e2e' : n.sensorType === 'tc' ? '#d53f8c' : '#3182ce') : '#2d3748',
+                fill: n.fontColor || '#2d3748',
                 'pointer-events': 'none',
             });
             txt.textContent = n.label;
@@ -910,7 +912,9 @@ function renderProps() {
 
     html += `
         <div class="prop-group">
-            <div class="prop-label">Font Size</div>
+            <div class="prop-label">Font Color</div>
+            <input type="color" class="prop-color" value="${n.fontColor || '#2d3748'}" onchange="updateNode(${n.id},'fontColor',this.value)">
+            <div class="prop-label" style="margin-top:6px;">Font Size</div>
             <input type="number" class="prop-input" min="6" max="48" value="${n.fontSize || 12}" onchange="updateNode(${n.id},'fontSize',parseFloat(this.value))">
         </div>
         <div class="prop-group">

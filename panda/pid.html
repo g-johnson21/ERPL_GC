@@ -62,6 +62,7 @@
         .imported-dc.active .dc-body { fill: #48bb78; stroke: #38a169; }
         .imported-dc .dc-label { fill: white; font-size: 10px; font-weight: 700; font-family: Arial; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
         .imported-dc .dc-state { font-size: 7px; font-weight: 700; font-family: Arial; text-anchor: middle; pointer-events: none; }
+        .imported-dc .dc-amps { pointer-events: none; }
         .imported-sensor .sensor-value { fill: #3182ce; font-size: 9px; font-weight: 700; font-family: monospace; text-anchor: middle; }
         .imported-sensor .sensor-value[data-sensor-type="lc"] { fill: #d69e2e; }
         .imported-sensor .sensor-value[data-sensor-type="tc"] { fill: #d53f8c; }
@@ -427,7 +428,8 @@
 
     <script>
         const PANDA_PORT = 3941, NIDAQ_PORT = 3000;
-        let pandaWs = null, nidaqWs = null, dcState = {}, editMode = false, dragTarget = null, dragOffset = { x: 0, y: 0 };
+        let pandaWs = null, nidaqWs = null, dcState = {}, dcAmps = {}, editMode = false, dragTarget = null, dragOffset = { x: 0, y: 0 };
+        const dcOrder = [7, 6, 5, 4, 3, 2, 1, 0, 11, 10, 9, 8];
         let selectedElement = null;
         
         const ptConfig = {
@@ -473,12 +475,24 @@
                         if (msg.logging !== undefined) updateLoggingStatus(msg.logging, msg.log_file);
                         if (msg.action === 'load_pid_layout' && msg.layout) applyLayout(msg.layout);
                         if (msg.action === 'save_pid_layout' && msg.success) showToast('Saved', '', 'success');
-                        // Parse serial telemetry for LC/TC data
-                        if (typeof msg.raw === 'string' && msg.raw.length > 0 && msg.raw[0] === 't' && msg.raw.includes(',')) {
-                            const tokens = msg.raw.split(',');
-                            const values = tokens.map(t => { const n = parseFloat(t.replace(/^[a-zA-Z]+/, '')); return Number.isFinite(n) ? n : null; }).filter(v => v !== null);
-                            for (let i = 0; i < Math.min(values.length, 6); i++) updateLC(i + 1, values[i]);
-                            for (let i = 0; i < Math.min(Math.max(values.length - 6, 0), 6); i++) updateTC(i + 1, values[i + 6]);
+                        // Parse serial telemetry
+                        if (typeof msg.raw === 'string' && msg.raw.length > 0 && msg.raw.includes(',')) {
+                            const rawId = msg.raw[0];
+                            if (rawId === 't' || rawId === 's') {
+                                const tokens = msg.raw.split(',');
+                                const values = tokens.map(t => { const n = parseFloat(t.replace(/^[a-zA-Z]+/, '')); return Number.isFinite(n) ? n : null; }).filter(v => v !== null);
+                                if (rawId === 't') {
+                                    for (let i = 0; i < Math.min(values.length, 6); i++) updateLC(i + 1, values[i]);
+                                    for (let i = 0; i < Math.min(Math.max(values.length - 6, 0), 6); i++) updateTC(i + 1, values[i + 6]);
+                                } else if (rawId === 's') {
+                                    for (let i = 0; i < values.length; i++) {
+                                        const mapped = (i < dcOrder.length) ? dcOrder[i] : i;
+                                        const ch = mapped + 1;
+                                        dcAmps[ch] = values[i];
+                                        updateDcAmps(ch, values[i]);
+                                    }
+                                }
+                            }
                         }
                     } catch (err) {}
                 };
@@ -647,6 +661,10 @@
             if (item) item.classList.toggle('active', state === 1);
             if (stateEl) { stateEl.className = `valve-state ${state ? 'on' : 'off'}`; stateEl.textContent = state ? 'ON' : 'OFF'; }
         }
+        function updateDcAmps(ch, val) {
+            const str = typeof val === 'number' ? val.toFixed(3) + ' A' : '-- A';
+            document.querySelectorAll(`.imported-dc[data-channel="${ch}"] .dc-amps`).forEach(el => el.textContent = str);
+        }
         function allValvesOff() { for (let i = 1; i <= 12; i++) { serialSend(`S${toHex(i)}0`); dcState[i] = 0; updateValveVisual(i, 0); } showToast('All OFF', '', 'warning'); }
         function emergencyStop() { serialSend('r'); document.querySelector('.header').classList.remove('armed'); allValvesOff(); showToast('E-STOP', '', 'error'); }
         function createNewLog() { if (pandaWs?.readyState === WebSocket.OPEN) pandaWs.send(JSON.stringify({ action: 'create_new_log' })); }
@@ -781,22 +799,34 @@
                     }
 
                     // Label
+                    const dcFontColor = n.fontColor || (n.hideShape ? '#e53e3e' : 'white');
                     const label = createSvgEl('text', {
-                        x: w / 2, y: n.hideShape ? h / 2 : h / 2 - 3,
+                        x: w / 2, y: n.hideShape ? h / 2 - 5 : h / 2 - 6,
                         class: 'dc-label',
-                        fill: n.hideShape ? '#e53e3e' : 'white',
+                        fill: dcFontColor,
                     });
                     label.textContent = n.label || valveMap[n.channel] || `DC${n.channel}`;
                     g.appendChild(label);
 
                     // State text
                     const stateText = createSvgEl('text', {
-                        x: w / 2, y: n.hideShape ? h / 2 + 12 : h / 2 + 9,
+                        x: w / 2, y: n.hideShape ? h / 2 + 5 : h / 2 + 4,
                         class: 'dc-state',
                         fill: dcState[n.channel] ? '#276749' : '#718096',
                     });
                     stateText.textContent = dcState[n.channel] ? 'ON' : 'OFF';
                     g.appendChild(stateText);
+
+                    // Amp value
+                    const ampsText = createSvgEl('text', {
+                        x: w / 2, y: n.hideShape ? h / 2 + 15 : h / 2 + 14,
+                        class: 'dc-amps',
+                        'text-anchor': 'middle',
+                        'font-size': '7', 'font-weight': '600', 'font-family': 'monospace',
+                        fill: '#a0aec0',
+                    });
+                    ampsText.textContent = dcAmps[n.channel] !== undefined ? dcAmps[n.channel].toFixed(3) + ' A' : '-- A';
+                    g.appendChild(ampsText);
 
                     // Click handler - toggle valve
                     g.addEventListener('click', () => {
@@ -820,12 +850,12 @@
                     }
 
                     // Sensor name label
-                    const labelColor = sType === 'lc' ? '#d69e2e' : sType === 'tc' ? '#d53f8c' : '#2d3748';
+                    const defaultLabelColor = sType === 'lc' ? '#d69e2e' : sType === 'tc' ? '#d53f8c' : '#2d3748';
                     const label = createSvgEl('text', {
                         x: w / 2, y: h / 2 - 5,
                         'text-anchor': 'middle', 'dominant-baseline': 'central',
                         'font-size': '8', 'font-weight': '700', 'font-family': 'Arial',
-                        fill: n.hideShape ? labelColor : '#2d3748',
+                        fill: n.fontColor || defaultLabelColor,
                     });
                     label.textContent = n.label || `${sType.toUpperCase()}${n.channel}`;
                     g.appendChild(label);
@@ -849,7 +879,7 @@
                         x: w / 2, y: h / 2,
                         'text-anchor': 'middle', 'dominant-baseline': 'central',
                         'font-size': n.fontSize || 14, 'font-weight': '600', 'font-family': 'Arial',
-                        fill: '#2d3748',
+                        fill: n.fontColor || '#2d3748',
                     });
                     txt.textContent = n.label || '';
                     g.appendChild(txt);
@@ -882,7 +912,7 @@
                             x: w / 2, y: ty,
                             'text-anchor': 'middle', 'dominant-baseline': 'central',
                             'font-size': n.fontSize || 12, 'font-weight': '600', 'font-family': 'Arial',
-                            fill: '#2d3748', 'pointer-events': 'none',
+                            fill: n.fontColor || '#2d3748', 'pointer-events': 'none',
                         });
                         txt.textContent = n.label;
                         g.appendChild(txt);

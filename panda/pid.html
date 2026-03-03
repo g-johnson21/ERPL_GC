@@ -57,6 +57,13 @@
         .pt-sensor circle { fill: #ebf8ff; stroke: #3182ce; stroke-width: 2; } .pt-sensor .pt-label { fill: #2d3748; font-size: 8px; font-weight: 700; font-family: Arial; text-anchor: middle; } .pt-sensor .pt-value { fill: #3182ce; font-size: 9px; font-weight: 700; font-family: monospace; text-anchor: middle; }
         .reg-symbol polygon { fill: #ffffff; stroke: #38a169; stroke-width: 3; } .reg-symbol text { fill: #2d3748; font-size: 11px; font-weight: 700; font-family: Arial; text-anchor: middle; }
         .venturi-box rect { fill: #fef3c7; stroke: #d97706; stroke-width: 2; } .venturi-box .v-title { fill: #92400e; font-size: 8px; font-weight: 700; font-family: Arial; text-anchor: middle; } .venturi-box .v-label { fill: #78350f; font-size: 7px; font-weight: 600; font-family: Arial; text-anchor: middle; } .venturi-box .v-value { fill: #d97706; font-size: 9px; font-weight: 700; font-family: monospace; text-anchor: middle; }
+        .imported-dc { cursor: pointer; } .imported-dc:hover { filter: brightness(0.9); }
+        .imported-dc .dc-body { fill: #a0aec0; stroke: #718096; stroke-width: 2; transition: fill 0.15s; }
+        .imported-dc.active .dc-body { fill: #48bb78; stroke: #38a169; }
+        .imported-dc .dc-label { fill: white; font-size: 10px; font-weight: 700; font-family: Arial; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+        .imported-dc .dc-state { font-size: 7px; font-weight: 700; font-family: Arial; text-anchor: middle; pointer-events: none; }
+        .imported-sensor .sensor-value { fill: #3182ce; font-size: 9px; font-weight: 700; font-family: monospace; text-anchor: middle; }
+        .imported-conn { fill: none; stroke-linecap: round; stroke-linejoin: round; }
         .edit-mode .draggable { cursor: move; } .edit-mode .draggable:hover { filter: drop-shadow(0 0 6px #9f7aea); }
         .edit-mode .draggable.selected { filter: drop-shadow(0 0 8px #6b46c1); }
         .edit-toolbar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: white; padding: 8px 14px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: none; gap: 8px; align-items: center; z-index: 100; }
@@ -85,6 +92,9 @@
             <span class="logging-filename-top" id="logging-filename-top">No log</span>
             <button class="log-btn start" onclick="createNewLog()"><i class="fas fa-file-alt"></i> Log</button>
             <button class="log-btn start edit-mode" id="edit-mode-btn" onclick="toggleEditMode()"><i class="fas fa-edit"></i> Edit</button>
+            <button class="log-btn start" onclick="document.getElementById('import-layout-input').click()" style="background:#9f7aea;"><i class="fas fa-file-import"></i> Import</button>
+            <button class="log-btn start" id="clear-layout-btn" onclick="clearImportedLayout()" style="background:#718096;display:none;"><i class="fas fa-undo"></i> Default</button>
+            <input type="file" id="import-layout-input" accept=".json" style="display:none" onchange="importLayout(event)">
             <a href="panda-daq-ui-v2.html" class="log-btn start"><i class="fas fa-gauge"></i> Telem</a>
         </div>
     </div>
@@ -505,6 +515,8 @@
             const str = typeof val === 'number' ? val.toFixed(0) : '--';
             document.querySelectorAll(`.pt-value[data-ch="${ch}"]`).forEach(el => el.textContent = str);
             document.querySelectorAll(`.v-value[data-ch="${ch}"]`).forEach(el => el.textContent = str);
+            // Also update imported sensor values
+            document.querySelectorAll(`.sensor-value[data-sensor-ch="${ch}"]`).forEach(el => el.textContent = str);
             const side = document.getElementById(`pt-side-${ch}`);
             if (side) side.textContent = str;
         }
@@ -610,6 +622,12 @@
         function controlValve(id, state) { serialSend(`S${toHex(id)}${state}`); dcState[id] = state; updateValveVisual(id, state); showToast(valveMap[id], state ? 'OPEN' : 'CLOSED', state ? 'success' : 'warning'); }
         function updateValveVisual(id, state) {
             document.querySelectorAll(`.valve-symbol[data-channel="${id}"]`).forEach(el => el.classList.toggle('active', state === 1));
+            // Also update imported layout DC buttons
+            document.querySelectorAll(`.imported-dc[data-channel="${id}"]`).forEach(el => {
+                el.classList.toggle('active', state === 1);
+                const stateText = el.querySelector('.dc-state');
+                if (stateText) { stateText.textContent = state ? 'ON' : 'OFF'; stateText.setAttribute('fill', state ? '#276749' : '#718096'); }
+            });
             const item = document.getElementById(`valve-item-${id}`), stateEl = document.getElementById(`valve-state-${id}`);
             if (item) item.classList.toggle('active', state === 1);
             if (stateEl) { stateEl.className = `valve-state ${state ? 'on' : 'off'}`; stateEl.textContent = state ? 'ON' : 'OFF'; }
@@ -622,6 +640,273 @@
             t.innerHTML = `<i class="fas fa-${{success:'check-circle',error:'times-circle',warning:'exclamation-triangle',info:'info-circle'}[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${title}</div>${message ? `<div class="toast-message">${message}</div>` : ''}</div>`;
             document.body.appendChild(t); setTimeout(() => t.remove(), 1500);
         }
+        // ============================================================
+        // IMPORTED LAYOUT
+        // ============================================================
+        let importedLayout = null;
+        const defaultSvgContent = null; // stored on first import
+
+        function importLayout(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (!data.nodes || !Array.isArray(data.nodes)) { showToast('Invalid layout', 'Missing nodes array', 'error'); return; }
+                    importedLayout = data;
+                    localStorage.setItem('pid-imported-layout', ev.target.result);
+                    renderImportedLayout(data);
+                    showToast('Layout imported', '', 'success');
+                    document.getElementById('clear-layout-btn').style.display = '';
+                } catch (err) {
+                    showToast('Import failed', err.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+
+        function clearImportedLayout() {
+            localStorage.removeItem('pid-imported-layout');
+            importedLayout = null;
+            document.getElementById('clear-layout-btn').style.display = 'none';
+            location.reload();
+        }
+
+        // Auto-load previously imported layout
+        function autoLoadImportedLayout() {
+            const saved = localStorage.getItem('pid-imported-layout');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if (data.nodes) {
+                        importedLayout = data;
+                        renderImportedLayout(data);
+                        document.getElementById('clear-layout-btn').style.display = '';
+                    }
+                } catch (_) {}
+            }
+        }
+
+        function renderImportedLayout(data) {
+            const svg = document.getElementById('pid-svg');
+            const nodes = data.nodes || [];
+            const connections = data.connections || [];
+
+            // Clear existing hardcoded layers and replace with imported content
+            ['layer-pipes', 'layer-tanks', 'layer-regs', 'layer-valves', 'layer-venturis', 'layer-pts', 'layer-labels'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerHTML = '';
+            });
+
+            // We'll use layer-pipes for connections, layer-tanks for shapes, layer-valves for DC, layer-pts for sensors, layer-labels for labels
+            const connLayer = document.getElementById('layer-pipes');
+            const shapeLayer = document.getElementById('layer-tanks');
+            const dcLayer = document.getElementById('layer-valves');
+            const sensorLayer = document.getElementById('layer-pts');
+            const labelLayer = document.getElementById('layer-labels');
+
+            // Render connections
+            connections.forEach(conn => {
+                const fromNode = nodes.find(n => n.id === conn.fromId);
+                const toNode = nodes.find(n => n.id === conn.toId);
+                if (!fromNode || !toNode) return;
+
+                const fp = getImportedPortPos(fromNode, conn.fromPort);
+                const tp = getImportedPortPos(toNode, conn.toPort);
+                const waypoints = conn.waypoints && conn.waypoints.length > 0 ? conn.waypoints : calcImportedDefaultWaypoints(fp, tp, conn.fromPort);
+
+                const pts = [fp, ...waypoints, tp];
+                let d = `M${pts[0].x},${pts[0].y}`;
+                for (let i = 1; i < pts.length; i++) {
+                    const cur = pts[i];
+                    if (i === 1) {
+                        if (conn.fromPort === 'left' || conn.fromPort === 'right') {
+                            d += ` H${cur.x} V${cur.y}`;
+                        } else {
+                            d += ` V${cur.y} H${cur.x}`;
+                        }
+                    } else if (i === pts.length - 1) {
+                        if (conn.toPort === 'left' || conn.toPort === 'right') {
+                            d += ` V${cur.y} H${cur.x}`;
+                        } else {
+                            d += ` H${cur.x} V${cur.y}`;
+                        }
+                    } else {
+                        d += ` H${cur.x} V${cur.y}`;
+                    }
+                }
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('class', 'imported-conn');
+                path.setAttribute('stroke', conn.color || '#718096');
+                path.setAttribute('stroke-width', conn.lineWidth || 2);
+                if (conn.dashed) path.setAttribute('stroke-dasharray', '8 4');
+                connLayer.appendChild(path);
+            });
+
+            // Render nodes
+            nodes.forEach(n => {
+                const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.setAttribute('transform', `translate(${n.x}, ${n.y})`);
+                const w = n.width, h = n.height;
+
+                if (n.type === 'dc') {
+                    // DC channel button - clickable to actuate valve
+                    g.setAttribute('class', 'imported-dc' + (dcState[n.channel] ? ' active' : ''));
+                    g.setAttribute('data-channel', n.channel);
+                    g.style.cursor = 'pointer';
+
+                    const rx = 6;
+                    const body = createSvgEl('rect', { x: 0, y: 0, width: w, height: h, rx, class: 'dc-body' });
+                    g.appendChild(body);
+
+                    // Label
+                    const label = createSvgEl('text', {
+                        x: w / 2, y: h / 2 - 3,
+                        class: 'dc-label',
+                    });
+                    label.textContent = n.label || valveMap[n.channel] || `DC${n.channel}`;
+                    g.appendChild(label);
+
+                    // State text
+                    const stateText = createSvgEl('text', {
+                        x: w / 2, y: h / 2 + 9,
+                        class: 'dc-state',
+                        fill: dcState[n.channel] ? '#276749' : '#718096',
+                    });
+                    stateText.textContent = dcState[n.channel] ? 'ON' : 'OFF';
+                    g.appendChild(stateText);
+
+                    // Click handler - toggle valve
+                    g.addEventListener('click', () => {
+                        if (!editMode) toggleValve(n.channel);
+                    });
+
+                    dcLayer.appendChild(g);
+
+                } else if (n.type === 'sensor') {
+                    // PT sensor display
+                    g.setAttribute('class', 'imported-sensor');
+                    const r = Math.min(w, h) / 2;
+
+                    const circle = createSvgEl('circle', {
+                        cx: w / 2, cy: h / 2, r,
+                        fill: n.fill || '#ebf8ff', stroke: n.stroke || '#3182ce', 'stroke-width': n.strokeWidth || 2,
+                    });
+                    g.appendChild(circle);
+
+                    // Sensor name label
+                    const label = createSvgEl('text', {
+                        x: w / 2, y: h / 2 - 5,
+                        'text-anchor': 'middle', 'dominant-baseline': 'central',
+                        'font-size': '8', 'font-weight': '700', 'font-family': 'Arial',
+                        fill: '#2d3748',
+                    });
+                    label.textContent = n.label || `PT${n.channel}`;
+                    g.appendChild(label);
+
+                    // Live value
+                    const val = createSvgEl('text', {
+                        x: w / 2, y: h / 2 + 8,
+                        'text-anchor': 'middle', 'dominant-baseline': 'central',
+                        class: 'sensor-value',
+                        'data-sensor-ch': n.channel,
+                    });
+                    val.textContent = '--';
+                    g.appendChild(val);
+
+                    sensorLayer.appendChild(g);
+
+                } else if (n.type === 'label') {
+                    // Text label
+                    const txt = createSvgEl('text', {
+                        x: w / 2, y: h / 2,
+                        'text-anchor': 'middle', 'dominant-baseline': 'central',
+                        'font-size': n.fontSize || 14, 'font-weight': '600', 'font-family': 'Arial',
+                        fill: '#2d3748',
+                    });
+                    txt.textContent = n.label || '';
+                    g.appendChild(txt);
+                    labelLayer.appendChild(g);
+
+                } else {
+                    // Shape (rect, circle, diamond, triangle, tank)
+                    if (n.shape === 'circle') {
+                        const r = Math.min(w, h) / 2;
+                        g.appendChild(createSvgEl('circle', { cx: w/2, cy: h/2, r, fill: n.fill || '#fff', stroke: n.stroke || '#718096', 'stroke-width': n.strokeWidth || 2 }));
+                    } else if (n.shape === 'diamond') {
+                        g.appendChild(createSvgEl('polygon', { points: `${w/2},0 ${w},${h/2} ${w/2},${h} 0,${h/2}`, fill: n.fill || '#fff', stroke: n.stroke || '#718096', 'stroke-width': n.strokeWidth || 2 }));
+                    } else if (n.shape === 'triangle') {
+                        g.appendChild(createSvgEl('polygon', { points: `${w/2},0 ${w},${h} 0,${h}`, fill: n.fill || '#fff', stroke: n.stroke || '#718096', 'stroke-width': n.strokeWidth || 2 }));
+                    } else if (n.shape === 'tank') {
+                        const rx = 8;
+                        g.appendChild(createSvgEl('rect', { x: 0, y: 0, width: w, height: h, rx, fill: n.fill || '#fff', stroke: n.stroke || '#3182ce', 'stroke-width': n.strokeWidth || 3 }));
+                        g.appendChild(createSvgEl('line', { x1: 0, y1: 20, x2: w, y2: 20, stroke: n.stroke || '#3182ce', 'stroke-width': 1 }));
+                        g.appendChild(createSvgEl('line', { x1: 0, y1: h-20, x2: w, y2: h-20, stroke: n.stroke || '#3182ce', 'stroke-width': 1 }));
+                    } else {
+                        // Rectangle
+                        g.appendChild(createSvgEl('rect', { x: 0, y: 0, width: w, height: h, rx: 4, fill: n.fill || '#fff', stroke: n.stroke || '#718096', 'stroke-width': n.strokeWidth || 2 }));
+                    }
+
+                    // Shape label
+                    if (n.label) {
+                        let ty = h / 2;
+                        if (n.shape === 'triangle') ty = h * 0.65;
+                        const txt = createSvgEl('text', {
+                            x: w / 2, y: ty,
+                            'text-anchor': 'middle', 'dominant-baseline': 'central',
+                            'font-size': n.fontSize || 12, 'font-weight': '600', 'font-family': 'Arial',
+                            fill: '#2d3748', 'pointer-events': 'none',
+                        });
+                        txt.textContent = n.label;
+                        g.appendChild(txt);
+                    }
+
+                    shapeLayer.appendChild(g);
+                }
+            });
+
+            // Apply current DC states to imported buttons
+            for (let i = 1; i <= 12; i++) {
+                updateValveVisual(i, dcState[i]);
+            }
+        }
+
+        function createSvgEl(tag, attrs) {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+            Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, String(v)));
+            return el;
+        }
+
+        function getImportedPortPos(n, portName) {
+            const w = n.width, h = n.height;
+            const ports = {
+                top: { x: w/2, y: 0 },
+                right: { x: w, y: h/2 },
+                bottom: { x: w/2, y: h },
+                left: { x: 0, y: h/2 },
+            };
+            const p = ports[portName] || ports.top;
+            return { x: n.x + p.x, y: n.y + p.y };
+        }
+
+        function calcImportedDefaultWaypoints(fp, tp, fromPort) {
+            if (fromPort === 'left' || fromPort === 'right') {
+                const mx = (fp.x + tp.x) / 2;
+                return [{ x: mx, y: tp.y }];
+            } else {
+                const my = (fp.y + tp.y) / 2;
+                return [{ x: tp.x, y: my }];
+            }
+        }
+
+        // Load imported layout after DOM + WS init
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(autoLoadImportedLayout, 100);
+        });
     </script>
 </body>
 </html>

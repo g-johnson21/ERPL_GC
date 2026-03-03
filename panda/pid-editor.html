@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P&ID Editor - PANDA</title>
+    <link rel="icon" type="image/x-icon" href="assets/smurfcat.png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; flex-direction: column; background-color: #f8fafc; overflow: hidden; }
+
+        /* ===== HEADER ===== */
+        .header { display: flex; justify-content: space-between; align-items: center; background-color: #f5f5f5; padding: 8px 16px; border-bottom: 1px solid #ddd; flex-shrink: 0; z-index: 1000; }
+        .title { font-size: 20px; font-weight: bold; color: #e53e3e; }
+        .header-actions { display: flex; gap: 6px; align-items: center; }
+        .header-btn { padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: all 0.2s; }
+        .header-btn:hover { filter: brightness(0.9); }
+        .btn-save { background: #38a169; color: white; }
+        .btn-load { background: #3182ce; color: white; }
+        .btn-clear { background: #e53e3e; color: white; }
+        .btn-export { background: #9f7aea; color: white; }
+        .btn-back { background: #718096; color: white; text-decoration: none; }
+        .btn-grid { background: #edf2f7; color: #4a5568; }
+        .btn-grid.active { background: #667eea; color: white; }
+        .btn-snap { background: #edf2f7; color: #4a5568; }
+        .btn-snap.active { background: #667eea; color: white; }
+
+        /* ===== MAIN LAYOUT ===== */
+        .main { flex: 1; display: flex; overflow: hidden; }
+
+        /* ===== LEFT PALETTE ===== */
+        .palette { width: 200px; background: white; border-right: 2px solid #e2e8f0; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+        .palette-section { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+        .palette-title { font-size: 10px; font-weight: 600; text-transform: uppercase; color: #718096; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .palette-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 6px; cursor: grab; font-size: 11px; font-weight: 600; color: #2d3748; margin-bottom: 4px; transition: all 0.15s; user-select: none; }
+        .palette-item:hover { border-color: #3182ce; background: #ebf8ff; }
+        .palette-item:active { cursor: grabbing; }
+        .palette-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 13px; flex-shrink: 0; }
+        .palette-icon.dc { background: #fed7d7; color: #e53e3e; }
+        .palette-icon.sensor { background: #ebf8ff; color: #3182ce; }
+        .palette-icon.shape { background: #fefcbf; color: #d69e2e; }
+        .palette-icon.lc { background: #fefcbf; color: #d69e2e; }
+        .palette-icon.tc { background: #fed7e2; color: #d53f8c; }
+        .palette-icon.label { background: #e9d8fd; color: #805ad5; }
+
+        /* ===== PROPERTIES PANEL ===== */
+        .properties { width: 220px; background: white; border-left: 2px solid #e2e8f0; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+        .properties-header { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #718096; letter-spacing: 0.5px; }
+        .prop-group { padding: 10px; border-bottom: 1px solid #f0f0f0; }
+        .prop-label { font-size: 10px; font-weight: 600; color: #718096; margin-bottom: 3px; text-transform: uppercase; }
+        .prop-input { width: 100%; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px; font-family: Arial, sans-serif; }
+        .prop-input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 2px rgba(102,126,234,0.2); }
+        .prop-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .prop-row > div { flex: 1; }
+        .prop-color { width: 100%; height: 30px; border: 1px solid #e2e8f0; border-radius: 4px; cursor: pointer; padding: 2px; }
+        select.prop-input { cursor: pointer; }
+        .prop-btn { padding: 5px 10px; border: none; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 4px; }
+        .prop-btn.delete { background: #fed7d7; color: #e53e3e; }
+        .prop-btn.delete:hover { background: #e53e3e; color: white; }
+        .prop-btn.duplicate { background: #ebf8ff; color: #3182ce; }
+        .prop-btn.duplicate:hover { background: #3182ce; color: white; }
+        .no-selection { padding: 20px 10px; text-align: center; color: #a0aec0; font-size: 12px; }
+
+        /* ===== CANVAS ===== */
+        .canvas-wrap { flex: 1; position: relative; overflow: hidden; background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%); }
+        .canvas-wrap svg { width: 100%; height: 100%; }
+
+        /* ===== SVG OBJECTS ===== */
+        .grid-line { stroke: #d0d5dd; stroke-width: 0.5; }
+        .node { cursor: move; }
+        .node:hover .node-body { filter: brightness(0.95); }
+        .node.selected .node-body { stroke: #667eea; stroke-width: 2; stroke-dasharray: 4 2; }
+        .node .node-body { transition: filter 0.1s; }
+        .conn-port { fill: #a0aec0; stroke: white; stroke-width: 1.5; cursor: crosshair; r: 5; transition: all 0.15s; opacity: 0; }
+        .node:hover .conn-port, .node.selected .conn-port { opacity: 1; }
+        .conn-port:hover { fill: #667eea; r: 7; }
+        .connection { fill: none; cursor: pointer; }
+        .connection:hover { filter: brightness(0.7); }
+        .connection.selected { stroke-dasharray: 6 3; }
+        .temp-line { stroke: #667eea; stroke-width: 2; stroke-dasharray: 5 3; fill: none; pointer-events: none; }
+        .conn-waypoint { fill: white; stroke: #667eea; stroke-width: 2; r: 5; cursor: move; display: none; }
+        .connection.selected ~ .conn-waypoint { display: block; }
+        .conn-waypoint:hover { r: 7; fill: #667eea; }
+        .viewport-bounds { fill: rgba(102,126,234,0.04); stroke: #667eea; stroke-width: 1.5; stroke-dasharray: 8 4; pointer-events: none; }
+        .viewport-label { fill: #667eea; font-size: 11px; font-weight: 600; font-family: Arial, sans-serif; pointer-events: none; opacity: 0.7; }
+
+        /* ===== TOAST ===== */
+        .toast { position: fixed; top: 60px; right: 20px; background: white; padding: 10px 14px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; z-index: 10000; animation: slideIn 0.2s ease-out; font-size: 13px; }
+        @keyframes slideIn { from { transform: translateX(300px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .toast.success { border-left: 4px solid #38a169; }
+        .toast.error { border-left: 4px solid #e53e3e; }
+        .toast.info { border-left: 4px solid #3182ce; }
+
+        /* ===== ZOOM CONTROLS ===== */
+        .zoom-controls { position: absolute; bottom: 12px; right: 12px; display: flex; gap: 4px; background: white; padding: 4px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 100; }
+        .zoom-btn { width: 32px; height: 32px; border: none; border-radius: 6px; background: #f7fafc; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; color: #4a5568; }
+        .zoom-btn:hover { background: #edf2f7; }
+        .zoom-label { font-size: 11px; color: #718096; display: flex; align-items: center; padding: 0 6px; font-weight: 600; }
+
+        /* ===== CONTEXT MENU ===== */
+        .context-menu { position: fixed; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); padding: 4px; z-index: 20000; min-width: 160px; display: none; }
+        .ctx-item { padding: 7px 12px; font-size: 12px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px; color: #2d3748; }
+        .ctx-item:hover { background: #ebf8ff; color: #3182ce; }
+        .ctx-item.danger { color: #e53e3e; }
+        .ctx-item.danger:hover { background: #fed7d7; }
+        .ctx-sep { height: 1px; background: #e2e8f0; margin: 4px 0; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="title">P&ID Editor</div>
+    <div class="header-actions">
+        <button class="header-btn btn-grid" id="btn-grid" onclick="toggleGrid()" title="Toggle Grid"><i class="fas fa-border-all"></i> Grid</button>
+        <button class="header-btn btn-snap" id="btn-snap" onclick="toggleSnap()" title="Toggle Snap to Grid"><i class="fas fa-magnet"></i> Snap</button>
+        <button class="header-btn btn-grid active" id="btn-bounds" onclick="toggleBounds()" title="Toggle Viewport Bounds"><i class="fas fa-vector-square"></i> Bounds</button>
+        <button class="header-btn btn-save" onclick="saveProject()"><i class="fas fa-save"></i> Save</button>
+        <button class="header-btn btn-load" onclick="document.getElementById('load-input').click()"><i class="fas fa-folder-open"></i> Load</button>
+        <input type="file" id="load-input" accept=".json" style="display:none" onchange="loadProject(event)">
+        <button class="header-btn btn-export" onclick="exportSVG()"><i class="fas fa-file-export"></i> Export SVG</button>
+        <button class="header-btn btn-clear" onclick="clearCanvas()"><i class="fas fa-trash"></i> Clear</button>
+        <a href="index.html" class="header-btn btn-back"><i class="fas fa-arrow-left"></i> Back</a>
+    </div>
+</div>
+
+<div class="main">
+    <!-- LEFT PALETTE -->
+    <div class="palette">
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-bolt"></i> DC Channels</div>
+            <div id="dc-palette"></div>
+        </div>
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-gauge-high"></i> Pressure Transducers</div>
+            <div id="sensor-palette"></div>
+        </div>
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-weight-hanging"></i> Load Cells</div>
+            <div id="lc-palette"></div>
+        </div>
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-temperature-high"></i> Thermocouples</div>
+            <div id="tc-palette"></div>
+        </div>
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-shapes"></i> Shapes</div>
+            <div class="palette-item" draggable="true" data-type="shape" data-shape="rect">
+                <div class="palette-icon shape"><i class="fas fa-square"></i></div> Rectangle
+            </div>
+            <div class="palette-item" draggable="true" data-type="shape" data-shape="circle">
+                <div class="palette-icon shape"><i class="fas fa-circle"></i></div> Circle
+            </div>
+            <div class="palette-item" draggable="true" data-type="shape" data-shape="diamond">
+                <div class="palette-icon shape"><i class="fas fa-diamond"></i></div> Diamond
+            </div>
+            <div class="palette-item" draggable="true" data-type="shape" data-shape="triangle">
+                <div class="palette-icon shape"><i class="fas fa-play"></i></div> Triangle
+            </div>
+            <div class="palette-item" draggable="true" data-type="shape" data-shape="tank">
+                <div class="palette-icon shape"><i class="fas fa-database"></i></div> Tank
+            </div>
+        </div>
+        <div class="palette-section">
+            <div class="palette-title"><i class="fas fa-font"></i> Annotations</div>
+            <div class="palette-item" draggable="true" data-type="label">
+                <div class="palette-icon label"><i class="fas fa-tag"></i></div> Label
+            </div>
+        </div>
+    </div>
+
+    <!-- CANVAS -->
+    <div class="canvas-wrap" id="canvas-wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d0d5dd" stroke-width="0.5"/>
+                </pattern>
+            </defs>
+            <g id="pan-group">
+                <rect id="grid-bg" width="10000" height="10000" x="-5000" y="-5000" fill="url(#grid-pattern)"/>
+                <g id="viewport-bounds-group">
+                    <rect class="viewport-bounds" x="0" y="0" width="1100" height="720" rx="2"/>
+                    <text class="viewport-label" x="8" y="16">P&ID Viewport (1100 x 720)</text>
+                    <text class="viewport-label" x="1092" y="714" text-anchor="end">1100, 720</text>
+                </g>
+                <g id="connections-layer"></g>
+                <g id="nodes-layer"></g>
+                <line id="temp-line" class="temp-line" x1="0" y1="0" x2="0" y2="0" style="display:none"/>
+            </g>
+        </svg>
+        <div class="zoom-controls">
+            <button class="zoom-btn" onclick="zoomBy(-0.1)"><i class="fas fa-minus"></i></button>
+            <div class="zoom-label" id="zoom-label">100%</div>
+            <button class="zoom-btn" onclick="zoomBy(0.1)"><i class="fas fa-plus"></i></button>
+            <button class="zoom-btn" onclick="zoomReset()" title="Reset View"><i class="fas fa-compress-arrows-alt"></i></button>
+        </div>
+    </div>
+
+    <!-- RIGHT PROPERTIES -->
+    <div class="properties">
+        <div class="properties-header"><i class="fas fa-sliders-h"></i> Properties</div>
+        <div id="props-content">
+            <div class="no-selection">Select an object to edit its properties</div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="context-menu" id="context-menu">
+    <div class="ctx-item" onclick="duplicateSelected()"><i class="fas fa-copy"></i> Duplicate</div>
+    <div class="ctx-item" onclick="bringToFront()"><i class="fas fa-layer-group"></i> Bring to Front</div>
+    <div class="ctx-item" onclick="sendToBack()"><i class="fas fa-layer-group fa-flip-vertical"></i> Send to Back</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="deleteSelected()"><i class="fas fa-trash"></i> Delete</div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let nodes = [];
+let connections = [];
+let nextId = 1;
+let selectedId = null;
+let selectedConnId = null;
+let showGrid = true;
+let snapToGrid = true;
+let showBounds = true;
+let gridSize = 20;
+
+// Interaction state
+let dragging = null;      // { id, offX, offY }
+let connecting = null;     // { fromId, port }
+let draggingWaypoint = null; // { connId, index }
+let panning = false;
+let panStart = { x: 0, y: 0 };
+let viewBox = { x: 0, y: 0 };
+let zoom = 1;
+
+// DC channels matching valveMap from pid.html
+const dcChannels = [
+    { ch: 1, name: 'PB3' },  { ch: 2, name: 'PB10' }, { ch: 3, name: 'S2' },
+    { ch: 4, name: 'PB9' },  { ch: 5, name: 'S1' },   { ch: 6, name: 'S3' },
+    { ch: 7, name: 'PB7' },  { ch: 8, name: 'PB1/5' }, { ch: 9, name: 'PB8' },
+    { ch: 10, name: 'PB4' }, { ch: 11, name: 'S6' },   { ch: 12, name: 'S5' }
+];
+
+// PT sensors matching ptConfig from pid.html
+const sensors = [
+    { ch: 0, name: 'PT1', sensorType: 'pt' },  { ch: 1, name: 'PT2', sensorType: 'pt' },
+    { ch: 2, name: 'PT3', sensorType: 'pt' },   { ch: 3, name: 'PT4', sensorType: 'pt' },
+    { ch: 4, name: 'PT5', sensorType: 'pt' },   { ch: 5, name: 'PT11', sensorType: 'pt' },
+    { ch: 6, name: 'PT12', sensorType: 'pt' },  { ch: 7, name: 'PT13', sensorType: 'pt' },
+    { ch: 8, name: 'PT14', sensorType: 'pt' },  { ch: 9, name: 'PT15', sensorType: 'pt' },
+    { ch: 10, name: 'PT31', sensorType: 'pt' }, { ch: 11, name: 'PT32', sensorType: 'pt' },
+    { ch: 12, name: 'PT21', sensorType: 'pt' }, { ch: 13, name: 'PT22', sensorType: 'pt' },
+    { ch: 14, name: 'PT23', sensorType: 'pt' }, { ch: 15, name: 'PT24', sensorType: 'pt' },
+];
+
+// Load cells (LC1-LC6)
+const loadCells = [
+    { ch: 1, name: 'LC1 Thrust', sensorType: 'lc' },
+    { ch: 2, name: 'LC2 LOX Wt', sensorType: 'lc' },
+    { ch: 3, name: 'LC3 Fuel Wt', sensorType: 'lc' },
+    { ch: 4, name: 'LC4 Vert', sensorType: 'lc' },
+    { ch: 5, name: 'LC5', sensorType: 'lc' },
+    { ch: 6, name: 'LC6', sensorType: 'lc' },
+];
+
+// Thermocouples (TC1-TC6)
+const thermocouples = [
+    { ch: 1, name: 'TC1 Chamber', sensorType: 'tc' },
+    { ch: 2, name: 'TC2 Pyro', sensorType: 'tc' },
+    { ch: 3, name: 'TC3 LOX Top', sensorType: 'tc' },
+    { ch: 4, name: 'TC4 LOX Bot', sensorType: 'tc' },
+    { ch: 5, name: 'TC5 Dragon', sensorType: 'tc' },
+    { ch: 6, name: 'TC6 Ambient', sensorType: 'tc' },
+];
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+    buildPalette();
+    setupCanvasEvents();
+    setupDragFromPalette();
+    setupKeyboard();
+    render();
+
+    // auto-load from localStorage
+    const saved = localStorage.getItem('pid-editor-project');
+    if (saved) {
+        try {
+            const data = JSON.parse(saved);
+            nodes = data.nodes || [];
+            connections = data.connections || [];
+            nextId = data.nextId || 1;
+            render();
+        } catch (_) {}
+    }
+});
+
+function buildPalette() {
+    const dcPal = document.getElementById('dc-palette');
+    dcChannels.forEach(dc => {
+        dcPal.innerHTML += `
+            <div class="palette-item" draggable="true" data-type="dc" data-channel="${dc.ch}" data-name="${dc.name}">
+                <div class="palette-icon dc"><i class="fas fa-power-off"></i></div> DC${dc.ch} (${dc.name})
+            </div>`;
+    });
+    const sPal = document.getElementById('sensor-palette');
+    sensors.forEach(s => {
+        sPal.innerHTML += `
+            <div class="palette-item" draggable="true" data-type="sensor" data-channel="${s.ch}" data-name="${s.name}">
+                <div class="palette-icon sensor"><i class="fas fa-gauge"></i></div> ${s.name}
+            </div>`;
+    });
+}
+
+// ============================================================
+// DRAG FROM PALETTE
+// ============================================================
+function setupDragFromPalette() {
+    document.querySelectorAll('.palette-item[draggable]').forEach(item => {
+        item.addEventListener('dragstart', e => {
+            e.dataTransfer.setData('text/plain', JSON.stringify({
+                type: item.dataset.type,
+                shape: item.dataset.shape || null,
+                channel: item.dataset.channel ? parseInt(item.dataset.channel) : null,
+                name: item.dataset.name || null,
+            }));
+        });
+    });
+
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.addEventListener('dragover', e => e.preventDefault());
+    wrap.addEventListener('drop', e => {
+        e.preventDefault();
+        try {
+            const info = JSON.parse(e.dataTransfer.getData('text/plain'));
+            const svg = document.getElementById('canvas');
+            const pt = svgPoint(svg, e.clientX, e.clientY);
+            const x = snapToGrid ? Math.round(pt.x / gridSize) * gridSize : pt.x;
+            const y = snapToGrid ? Math.round(pt.y / gridSize) * gridSize : pt.y;
+            addNode(info, x, y);
+        } catch (_) {}
+    });
+}
+
+// ============================================================
+// NODE CREATION
+// ============================================================
+function addNode(info, x, y) {
+    const id = nextId++;
+    const node = {
+        id,
+        type: info.type,
+        x, y,
+        label: '',
+        fill: '#ffffff',
+        stroke: '#718096',
+        strokeWidth: 2,
+        width: 100,
+        height: 50,
+        fontSize: 12,
+    };
+
+    switch (info.type) {
+        case 'dc':
+            node.channel = info.channel;
+            node.label = info.name || `DC${info.channel}`;
+            node.fill = '#f7fafc';
+            node.stroke = '#e53e3e';
+            node.width = 80;
+            node.height = 36;
+            break;
+        case 'sensor':
+            node.channel = info.channel;
+            node.label = info.name || `PT${info.channel}`;
+            node.fill = '#ebf8ff';
+            node.stroke = '#3182ce';
+            node.width = 60;
+            node.height = 60;
+            node.shape = 'circle';
+            break;
+        case 'shape':
+            node.shape = info.shape;
+            node.label = info.shape === 'tank' ? 'Tank' : '';
+            node.fill = '#ffffff';
+            node.stroke = '#718096';
+            if (info.shape === 'circle') { node.width = 80; node.height = 80; }
+            else if (info.shape === 'diamond') { node.width = 80; node.height = 80; }
+            else if (info.shape === 'triangle') { node.width = 80; node.height = 70; }
+            else if (info.shape === 'tank') { node.width = 100; node.height = 140; node.stroke = '#3182ce'; }
+            else { node.width = 120; node.height = 60; }
+            break;
+        case 'label':
+            node.label = 'Label';
+            node.fill = 'none';
+            node.stroke = 'none';
+            node.width = 80;
+            node.height = 30;
+            node.fontSize = 14;
+            break;
+    }
+
+    nodes.push(node);
+    selectedId = id;
+    selectedConnId = null;
+    render();
+    renderProps();
+    return node;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+    const nodesLayer = document.getElementById('nodes-layer');
+    const connsLayer = document.getElementById('connections-layer');
+
+    // Grid visibility
+    document.getElementById('grid-bg').style.display = showGrid ? '' : 'none';
+
+    // Connections
+    connsLayer.innerHTML = '';
+    connections.forEach(conn => {
+        const from = nodes.find(n => n.id === conn.fromId);
+        const to = nodes.find(n => n.id === conn.toId);
+        if (!from || !to) return;
+        const fp = getPortPos(from, conn.fromPort);
+        const tp = getPortPos(to, conn.toPort);
+
+        // Initialize waypoints if missing
+        if (!conn.waypoints || conn.waypoints.length === 0) {
+            conn.waypoints = calcDefaultWaypoints(fp, tp, conn.fromPort);
+        }
+
+        // Build path through waypoints
+        const pts = [fp, ...conn.waypoints, tp];
+        let d = `M${pts[0].x},${pts[0].y}`;
+        for (let i = 1; i < pts.length; i++) {
+            const prev = pts[i - 1];
+            const cur = pts[i];
+            // Orthogonal segments: go horizontal then vertical between each pair
+            if (i === 1) {
+                // From start port: extend in port direction first
+                if (conn.fromPort === 'left' || conn.fromPort === 'right') {
+                    d += ` H${cur.x} V${cur.y}`;
+                } else {
+                    d += ` V${cur.y} H${cur.x}`;
+                }
+            } else if (i === pts.length - 1) {
+                // To end port: arrive from port direction
+                if (conn.toPort === 'left' || conn.toPort === 'right') {
+                    d += ` V${cur.y} H${cur.x}`;
+                } else {
+                    d += ` H${cur.x} V${cur.y}`;
+                }
+            } else {
+                d += ` H${cur.x} V${cur.y}`;
+            }
+        }
+
+        const isSelected = conn.id === selectedConnId;
+        const color = conn.color || '#718096';
+        const width = conn.lineWidth || 2;
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('class', 'connection' + (isSelected ? ' selected' : ''));
+        path.setAttribute('data-conn-id', conn.id);
+        path.setAttribute('stroke', isSelected ? '#667eea' : color);
+        path.setAttribute('stroke-width', isSelected ? Math.max(width, 3) : width);
+        if (conn.dashed && !isSelected) path.setAttribute('stroke-dasharray', '8 4');
+        path.addEventListener('click', e => { e.stopPropagation(); selectConnection(conn.id); });
+        path.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); selectConnection(conn.id); showContextMenu(e); });
+        connsLayer.appendChild(path);
+
+        // Render draggable waypoints when selected
+        if (isSelected) {
+            conn.waypoints.forEach((wp, idx) => {
+                const circle = svgEl('circle', {
+                    cx: wp.x, cy: wp.y, r: 6,
+                    fill: 'white', stroke: '#667eea', 'stroke-width': 2,
+                    cursor: 'move', class: 'conn-waypoint',
+                    style: 'display:block',
+                });
+                circle.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    draggingWaypoint = { connId: conn.id, index: idx };
+                });
+                connsLayer.appendChild(circle);
+            });
+        }
+    });
+
+    // Nodes
+    nodesLayer.innerHTML = '';
+    nodes.forEach(n => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('class', 'node' + (n.id === selectedId ? ' selected' : ''));
+        g.setAttribute('transform', `translate(${n.x}, ${n.y})`);
+        g.setAttribute('data-id', n.id);
+
+        const w = n.width, h = n.height;
+
+        // Draw body
+        if (n.type === 'sensor' || (n.shape === 'circle')) {
+            const r = Math.min(w, h) / 2;
+            const el = svgEl('circle', { cx: w/2, cy: h/2, r, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' });
+            g.appendChild(el);
+        } else if (n.shape === 'diamond') {
+            const pts = `${w/2},0 ${w},${h/2} ${w/2},${h} 0,${h/2}`;
+            g.appendChild(svgEl('polygon', { points: pts, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' }));
+        } else if (n.shape === 'triangle') {
+            const pts = `${w/2},0 ${w},${h} 0,${h}`;
+            g.appendChild(svgEl('polygon', { points: pts, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' }));
+        } else if (n.shape === 'tank') {
+            // Rounded tank with caps
+            const rx = 8;
+            g.appendChild(svgEl('rect', { x: 0, y: 0, width: w, height: h, rx, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' }));
+            g.appendChild(svgEl('line', { x1: 0, y1: 20, x2: w, y2: 20, stroke: n.stroke, 'stroke-width': 1 }));
+            g.appendChild(svgEl('line', { x1: 0, y1: h-20, x2: w, y2: h-20, stroke: n.stroke, 'stroke-width': 1 }));
+        } else if (n.type === 'label') {
+            // Invisible hit area so labels can be clicked/dragged
+            g.appendChild(svgEl('rect', { x: 0, y: 0, width: w, height: h, fill: 'transparent', stroke: 'none', class: 'node-body' }));
+        } else {
+            // Rectangle (dc buttons, generic rect)
+            const rx = n.type === 'dc' ? 6 : 4;
+            g.appendChild(svgEl('rect', { x: 0, y: 0, width: w, height: h, rx, fill: n.fill, stroke: n.stroke, 'stroke-width': n.strokeWidth, class: 'node-body' }));
+        }
+
+        // Label text
+        if (n.label) {
+            let ty = h / 2;
+            if (n.shape === 'triangle') ty = h * 0.65;
+            const txt = svgEl('text', {
+                x: w / 2, y: ty,
+                'text-anchor': 'middle', 'dominant-baseline': 'central',
+                'font-size': n.fontSize || 12, 'font-weight': '600',
+                'font-family': 'Arial, sans-serif',
+                fill: n.type === 'dc' ? '#e53e3e' : n.type === 'sensor' ? '#3182ce' : '#2d3748',
+                'pointer-events': 'none',
+            });
+            txt.textContent = n.label;
+            g.appendChild(txt);
+        }
+
+        // Connection ports (top, right, bottom, left)
+        const ports = getPortDefs(n);
+        ports.forEach(p => {
+            const circle = svgEl('circle', {
+                cx: p.x, cy: p.y, r: 5,
+                class: 'conn-port',
+                'data-port': p.name,
+            });
+            circle.addEventListener('mousedown', e => {
+                e.stopPropagation();
+                startConnection(n.id, p.name);
+            });
+            circle.addEventListener('mouseup', e => {
+                e.stopPropagation();
+                endConnection(n.id, p.name);
+            });
+            g.appendChild(circle);
+        });
+
+        // Events
+        g.addEventListener('mousedown', e => {
+            if (e.target.classList.contains('conn-port')) return;
+            e.stopPropagation();
+            selectNode(n.id);
+            const svg = document.getElementById('canvas');
+            const pt = svgPoint(svg, e.clientX, e.clientY);
+            dragging = { id: n.id, offX: pt.x - n.x, offY: pt.y - n.y };
+        });
+        g.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            selectNode(n.id);
+            showContextMenu(e);
+        });
+
+        nodesLayer.appendChild(g);
+    });
+
+    updateViewTransform();
+    autoSave();
+}
+
+function calcDefaultWaypoints(fp, tp, fromPort) {
+    // Generate 1 default waypoint at the midpoint bend
+    if (fromPort === 'left' || fromPort === 'right') {
+        const mx = (fp.x + tp.x) / 2;
+        return [{ x: mx, y: tp.y }];
+    } else {
+        const my = (fp.y + tp.y) / 2;
+        return [{ x: tp.x, y: my }];
+    }
+}
+
+function getPortDefs(n) {
+    const w = n.width, h = n.height;
+    return [
+        { name: 'top', x: w/2, y: 0 },
+        { name: 'right', x: w, y: h/2 },
+        { name: 'bottom', x: w/2, y: h },
+        { name: 'left', x: 0, y: h/2 },
+    ];
+}
+
+function getPortPos(n, portName) {
+    const port = getPortDefs(n).find(p => p.name === portName);
+    return { x: n.x + port.x, y: n.y + port.y };
+}
+
+function svgEl(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+    return el;
+}
+
+function svgPoint(svg, cx, cy) {
+    const pt = svg.createSVGPoint();
+    pt.x = cx; pt.y = cy;
+    const ctm = document.getElementById('pan-group').getScreenCTM().inverse();
+    return pt.matrixTransform(ctm);
+}
+
+// ============================================================
+// VIEW / ZOOM / PAN
+// ============================================================
+function updateViewTransform() {
+    const panGroup = document.getElementById('pan-group');
+    panGroup.setAttribute('transform', `scale(${zoom}) translate(${viewBox.x}, ${viewBox.y})`);
+    document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
+}
+
+function zoomBy(delta) {
+    zoom = Math.max(0.2, Math.min(3, zoom + delta));
+    updateViewTransform();
+}
+
+function zoomReset() {
+    zoom = 1; viewBox.x = 0; viewBox.y = 0;
+    updateViewTransform();
+}
+
+// ============================================================
+// CANVAS EVENTS
+// ============================================================
+function setupCanvasEvents() {
+    const svg = document.getElementById('canvas');
+    const tempLine = document.getElementById('temp-line');
+
+    svg.addEventListener('mousedown', e => {
+        if (e.button === 1 || (e.button === 0 && e.altKey)) {
+            // Middle click or alt+click to pan
+            panning = true;
+            panStart = { x: e.clientX - viewBox.x * zoom, y: e.clientY - viewBox.y * zoom };
+            svg.style.cursor = 'grabbing';
+            e.preventDefault();
+        } else if (e.button === 0 && !e.target.closest('.node') && !e.target.closest('.connection')) {
+            deselectAll();
+        }
+    });
+
+    svg.addEventListener('mousemove', e => {
+        if (panning) {
+            viewBox.x = (e.clientX - panStart.x) / zoom;
+            viewBox.y = (e.clientY - panStart.y) / zoom;
+            updateViewTransform();
+            return;
+        }
+        if (draggingWaypoint) {
+            const pt = svgPoint(svg, e.clientX, e.clientY);
+            const conn = connections.find(c => c.id === draggingWaypoint.connId);
+            if (conn && conn.waypoints[draggingWaypoint.index]) {
+                let wx = pt.x, wy = pt.y;
+                if (snapToGrid) {
+                    wx = Math.round(wx / gridSize) * gridSize;
+                    wy = Math.round(wy / gridSize) * gridSize;
+                }
+                conn.waypoints[draggingWaypoint.index] = { x: wx, y: wy };
+                render();
+            }
+            return;
+        }
+        if (dragging) {
+            const pt = svgPoint(svg, e.clientX, e.clientY);
+            let nx = pt.x - dragging.offX;
+            let ny = pt.y - dragging.offY;
+            if (snapToGrid) {
+                nx = Math.round(nx / gridSize) * gridSize;
+                ny = Math.round(ny / gridSize) * gridSize;
+            }
+            const node = nodes.find(n => n.id === dragging.id);
+            if (node) { node.x = nx; node.y = ny; render(); }
+            return;
+        }
+        if (connecting) {
+            const pt = svgPoint(svg, e.clientX, e.clientY);
+            const from = nodes.find(n => n.id === connecting.fromId);
+            const fp = getPortPos(from, connecting.port);
+            tempLine.setAttribute('x1', fp.x);
+            tempLine.setAttribute('y1', fp.y);
+            tempLine.setAttribute('x2', pt.x);
+            tempLine.setAttribute('y2', pt.y);
+            tempLine.style.display = '';
+        }
+    });
+
+    svg.addEventListener('mouseup', e => {
+        if (panning) { panning = false; svg.style.cursor = ''; }
+        if (draggingWaypoint) { draggingWaypoint = null; }
+        if (dragging) { dragging = null; }
+        if (connecting) {
+            connecting = null;
+            tempLine.style.display = 'none';
+        }
+    });
+
+    svg.addEventListener('wheel', e => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.08 : 0.08;
+        zoom = Math.max(0.2, Math.min(3, zoom + delta));
+        updateViewTransform();
+    }, { passive: false });
+
+    // Hide context menu on click
+    document.addEventListener('click', () => {
+        document.getElementById('context-menu').style.display = 'none';
+    });
+}
+
+// ============================================================
+// CONNECTIONS
+// ============================================================
+function startConnection(nodeId, port) {
+    connecting = { fromId: nodeId, port };
+    document.getElementById('temp-line').style.display = '';
+}
+
+function endConnection(nodeId, port) {
+    if (!connecting || connecting.fromId === nodeId) { connecting = null; document.getElementById('temp-line').style.display = 'none'; return; }
+    // Check for duplicate
+    const exists = connections.some(c =>
+        (c.fromId === connecting.fromId && c.fromPort === connecting.port && c.toId === nodeId && c.toPort === port) ||
+        (c.fromId === nodeId && c.fromPort === port && c.toId === connecting.fromId && c.toPort === connecting.port)
+    );
+    if (!exists) {
+        connections.push({
+            id: nextId++,
+            fromId: connecting.fromId,
+            fromPort: connecting.port,
+            toId: nodeId,
+            toPort: port,
+            color: '#718096',
+            lineWidth: 2,
+            dashed: false,
+            waypoints: [],
+        });
+    }
+    connecting = null;
+    document.getElementById('temp-line').style.display = 'none';
+    render();
+}
+
+// ============================================================
+// SELECTION
+// ============================================================
+function selectNode(id) {
+    selectedId = id;
+    selectedConnId = null;
+    render();
+    renderProps();
+}
+
+function selectConnection(id) {
+    selectedConnId = id;
+    selectedId = null;
+    render();
+    renderProps();
+}
+
+function deselectAll() {
+    selectedId = null;
+    selectedConnId = null;
+    render();
+    renderProps();
+}
+
+// ============================================================
+// PROPERTIES PANEL
+// ============================================================
+function renderProps() {
+    const container = document.getElementById('props-content');
+
+    if (selectedConnId !== null) {
+        const conn = connections.find(c => c.id === selectedConnId);
+        if (!conn) { container.innerHTML = '<div class="no-selection">Select an object</div>'; return; }
+        container.innerHTML = `
+            <div class="prop-group">
+                <div class="prop-label">Connection</div>
+                <div style="font-size:11px;color:#4a5568;margin-bottom:6px;">
+                    Node #${conn.fromId} (${conn.fromPort}) → Node #${conn.toId} (${conn.toPort})
+                </div>
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Color</div>
+                <input type="color" class="prop-color" value="${conn.color || '#718096'}" onchange="updateConn(${conn.id},'color',this.value)">
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Line Width</div>
+                <input type="number" class="prop-input" min="1" max="10" value="${conn.lineWidth || 2}" onchange="updateConn(${conn.id},'lineWidth',parseFloat(this.value))">
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Style</div>
+                <select class="prop-input" onchange="updateConn(${conn.id},'dashed',this.value==='dashed')">
+                    <option value="solid" ${!conn.dashed ? 'selected' : ''}>Solid</option>
+                    <option value="dashed" ${conn.dashed ? 'selected' : ''}>Dashed</option>
+                </select>
+            </div>
+            <div class="prop-group">
+                <div class="prop-label">Waypoints (${conn.waypoints ? conn.waypoints.length : 0})</div>
+                <div style="font-size:10px;color:#718096;margin-bottom:6px;">Drag circles on the line to adjust corners</div>
+                <button class="prop-btn duplicate" onclick="addWaypoint(${conn.id})"><i class="fas fa-plus"></i> Add Waypoint</button>
+                <button class="prop-btn" style="background:#fefcbf;color:#d69e2e;margin-top:2px;" onclick="resetWaypoints(${conn.id})"><i class="fas fa-undo"></i> Reset Corners</button>
+            </div>
+            <div class="prop-group">
+                <button class="prop-btn delete" onclick="deleteConnection(${conn.id})"><i class="fas fa-trash"></i> Delete Connection</button>
+            </div>`;
+        return;
+    }
+
+    if (selectedId === null) { container.innerHTML = '<div class="no-selection">Select an object to edit its properties</div>'; return; }
+    const n = nodes.find(nd => nd.id === selectedId);
+    if (!n) { container.innerHTML = '<div class="no-selection">Select an object</div>'; return; }
+
+    let typeLabel = n.type === 'dc' ? `DC Channel ${n.channel}` : n.type === 'sensor' ? `Sensor (${n.label})` : n.type === 'label' ? 'Label' : `Shape (${n.shape})`;
+
+    let html = `
+        <div class="prop-group">
+            <div class="prop-label">Type</div>
+            <div style="font-size:12px;font-weight:600;color:#2d3748;">${typeLabel}</div>
+        </div>
+        <div class="prop-group">
+            <div class="prop-label">Label</div>
+            <input type="text" class="prop-input" value="${escHtml(n.label)}" oninput="updateNode(${n.id},'label',this.value)">
+        </div>
+        <div class="prop-group">
+            <div class="prop-row">
+                <div><div class="prop-label">X</div><input type="number" class="prop-input" value="${Math.round(n.x)}" onchange="updateNode(${n.id},'x',parseFloat(this.value))"></div>
+                <div><div class="prop-label">Y</div><input type="number" class="prop-input" value="${Math.round(n.y)}" onchange="updateNode(${n.id},'y',parseFloat(this.value))"></div>
+            </div>
+            <div class="prop-row">
+                <div><div class="prop-label">Width</div><input type="number" class="prop-input" value="${n.width}" min="20" onchange="updateNode(${n.id},'width',parseFloat(this.value))"></div>
+                <div><div class="prop-label">Height</div><input type="number" class="prop-input" value="${n.height}" min="20" onchange="updateNode(${n.id},'height',parseFloat(this.value))"></div>
+            </div>
+        </div>`;
+
+    if (n.type !== 'label') {
+        html += `
+        <div class="prop-group">
+            <div class="prop-label">Fill Color</div>
+            <input type="color" class="prop-color" value="${n.fill === 'none' ? '#ffffff' : n.fill}" onchange="updateNode(${n.id},'fill',this.value)">
+            <div class="prop-label" style="margin-top:6px;">Stroke Color</div>
+            <input type="color" class="prop-color" value="${n.stroke === 'none' ? '#ffffff' : n.stroke}" onchange="updateNode(${n.id},'stroke',this.value)">
+            <div class="prop-label" style="margin-top:6px;">Stroke Width</div>
+            <input type="number" class="prop-input" min="0" max="10" value="${n.strokeWidth}" onchange="updateNode(${n.id},'strokeWidth',parseFloat(this.value))">
+        </div>`;
+    }
+
+    html += `
+        <div class="prop-group">
+            <div class="prop-label">Font Size</div>
+            <input type="number" class="prop-input" min="6" max="48" value="${n.fontSize || 12}" onchange="updateNode(${n.id},'fontSize',parseFloat(this.value))">
+        </div>
+        <div class="prop-group">
+            <button class="prop-btn duplicate" onclick="duplicateSelected()"><i class="fas fa-copy"></i> Duplicate</button>
+            <button class="prop-btn delete" onclick="deleteSelected()"><i class="fas fa-trash"></i> Delete</button>
+        </div>`;
+
+    container.innerHTML = html;
+}
+
+function updateNode(id, key, val) {
+    const n = nodes.find(nd => nd.id === id);
+    if (n) { n[key] = val; render(); }
+}
+
+function updateConn(id, key, val) {
+    const c = connections.find(cn => cn.id === id);
+    if (c) { c[key] = val; render(); renderProps(); }
+}
+
+function escHtml(s) { return String(s).replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+// ============================================================
+// ACTIONS
+// ============================================================
+function deleteSelected() {
+    if (selectedConnId !== null) { deleteConnection(selectedConnId); return; }
+    if (selectedId === null) return;
+    connections = connections.filter(c => c.fromId !== selectedId && c.toId !== selectedId);
+    nodes = nodes.filter(n => n.id !== selectedId);
+    selectedId = null;
+    render();
+    renderProps();
+    document.getElementById('context-menu').style.display = 'none';
+}
+
+function addWaypoint(connId) {
+    const conn = connections.find(c => c.id === connId);
+    if (!conn) return;
+    const from = nodes.find(n => n.id === conn.fromId);
+    const to = nodes.find(n => n.id === conn.toId);
+    if (!from || !to) return;
+    const fp = getPortPos(from, conn.fromPort);
+    const tp = getPortPos(to, conn.toPort);
+    if (!conn.waypoints) conn.waypoints = [];
+    // Insert a new waypoint at the midpoint of the last segment
+    const lastPt = conn.waypoints.length > 0 ? conn.waypoints[conn.waypoints.length - 1] : fp;
+    const newWp = { x: Math.round((lastPt.x + tp.x) / 2), y: Math.round((lastPt.y + tp.y) / 2) };
+    if (snapToGrid) { newWp.x = Math.round(newWp.x / gridSize) * gridSize; newWp.y = Math.round(newWp.y / gridSize) * gridSize; }
+    conn.waypoints.push(newWp);
+    render(); renderProps();
+}
+
+function resetWaypoints(connId) {
+    const conn = connections.find(c => c.id === connId);
+    if (!conn) return;
+    conn.waypoints = [];
+    render(); renderProps();
+}
+
+function deleteConnection(id) {
+    connections = connections.filter(c => c.id !== id);
+    selectedConnId = null;
+    render();
+    renderProps();
+    document.getElementById('context-menu').style.display = 'none';
+}
+
+function duplicateSelected() {
+    if (selectedId === null) return;
+    const orig = nodes.find(n => n.id === selectedId);
+    if (!orig) return;
+    const copy = { ...orig, id: nextId++, x: orig.x + 20, y: orig.y + 20 };
+    nodes.push(copy);
+    selectedId = copy.id;
+    render();
+    renderProps();
+    document.getElementById('context-menu').style.display = 'none';
+}
+
+function bringToFront() {
+    if (selectedId === null) return;
+    const idx = nodes.findIndex(n => n.id === selectedId);
+    if (idx >= 0) { const n = nodes.splice(idx, 1)[0]; nodes.push(n); render(); }
+    document.getElementById('context-menu').style.display = 'none';
+}
+
+function sendToBack() {
+    if (selectedId === null) return;
+    const idx = nodes.findIndex(n => n.id === selectedId);
+    if (idx >= 0) { const n = nodes.splice(idx, 1)[0]; nodes.unshift(n); render(); }
+    document.getElementById('context-menu').style.display = 'none';
+}
+
+// ============================================================
+// CONTEXT MENU
+// ============================================================
+function showContextMenu(e) {
+    const menu = document.getElementById('context-menu');
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    menu.style.display = 'block';
+}
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+function setupKeyboard() {
+    document.addEventListener('keydown', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === 'Delete' || e.key === 'Backspace') { deleteSelected(); e.preventDefault(); }
+        if (e.key === 'd' && e.ctrlKey) { e.preventDefault(); duplicateSelected(); }
+        if (e.key === 'Escape') deselectAll();
+        // Arrow keys for nudging
+        const node = nodes.find(n => n.id === selectedId);
+        if (node) {
+            const step = snapToGrid ? gridSize : 1;
+            if (e.key === 'ArrowLeft') { node.x -= step; render(); renderProps(); e.preventDefault(); }
+            if (e.key === 'ArrowRight') { node.x += step; render(); renderProps(); e.preventDefault(); }
+            if (e.key === 'ArrowUp') { node.y -= step; render(); renderProps(); e.preventDefault(); }
+            if (e.key === 'ArrowDown') { node.y += step; render(); renderProps(); e.preventDefault(); }
+        }
+    });
+}
+
+// ============================================================
+// GRID / SNAP
+// ============================================================
+function toggleGrid() {
+    showGrid = !showGrid;
+    document.getElementById('btn-grid').classList.toggle('active', showGrid);
+    render();
+}
+
+function toggleSnap() {
+    snapToGrid = !snapToGrid;
+    document.getElementById('btn-snap').classList.toggle('active', snapToGrid);
+}
+
+function toggleBounds() {
+    showBounds = !showBounds;
+    document.getElementById('btn-bounds').classList.toggle('active', showBounds);
+    document.getElementById('viewport-bounds-group').style.display = showBounds ? '' : 'none';
+}
+
+// Init button states
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-grid').classList.toggle('active', showGrid);
+    document.getElementById('btn-snap').classList.toggle('active', snapToGrid);
+    document.getElementById('btn-bounds').classList.toggle('active', showBounds);
+});
+
+// ============================================================
+// SAVE / LOAD / EXPORT
+// ============================================================
+function autoSave() {
+    try {
+        localStorage.setItem('pid-editor-project', JSON.stringify({ nodes, connections, nextId }));
+    } catch (_) {}
+}
+
+function saveProject() {
+    const data = JSON.stringify({ nodes, connections, nextId }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pid-layout.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('Project saved!', 'success');
+}
+
+function loadProject(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        try {
+            const data = JSON.parse(ev.target.result);
+            nodes = data.nodes || [];
+            connections = data.connections || [];
+            nextId = data.nextId || 1;
+            selectedId = null;
+            selectedConnId = null;
+            render();
+            renderProps();
+            showToast('Project loaded!', 'success');
+        } catch (err) {
+            showToast('Invalid file', 'error');
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
+function exportSVG() {
+    const svg = document.getElementById('canvas');
+    const clone = svg.cloneNode(true);
+    // Reset transform for export
+    const panGroup = clone.querySelector('#pan-group');
+    panGroup.setAttribute('transform', '');
+    // Remove ports for clean export
+    clone.querySelectorAll('.conn-port').forEach(el => el.remove());
+    clone.querySelectorAll('.temp-line').forEach(el => el.remove());
+    // Set viewBox to content bounds
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    nodes.forEach(n => {
+        minX = Math.min(minX, n.x - 10);
+        minY = Math.min(minY, n.y - 10);
+        maxX = Math.max(maxX, n.x + n.width + 10);
+        maxY = Math.max(maxY, n.y + n.height + 10);
+    });
+    if (nodes.length === 0) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
+    clone.setAttribute('viewBox', `${minX} ${minY} ${maxX - minX} ${maxY - minY}`);
+    clone.setAttribute('width', maxX - minX);
+    clone.setAttribute('height', maxY - minY);
+
+    const blob = new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pid-diagram.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('SVG exported!', 'success');
+}
+
+function clearCanvas() {
+    if (!confirm('Clear all objects? This cannot be undone.')) return;
+    nodes = [];
+    connections = [];
+    nextId = 1;
+    selectedId = null;
+    selectedConnId = null;
+    render();
+    renderProps();
+    showToast('Canvas cleared', 'info');
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg, type = 'info') {
+    const icons = { success: 'check-circle', error: 'times-circle', info: 'info-circle' };
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<i class="fas fa-${icons[type] || 'info-circle'}" style="font-size:18px;"></i><span>${msg}</span>`;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+}
+</script>
+</body>
+</html>

@@ -57,6 +57,7 @@ echo   http://localhost:8080/pid.html
 echo.
 echo Use stop_panda.bat to shutdown
 echo.
+start http://localhost:8080/panda-daq-ui-v2.html
 
 popd
 endlocal
